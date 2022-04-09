@@ -1,0 +1,418 @@
+---
+title: "Luz de Noche"
+author: "Ariel Coto Tapia"
+date: "6/4/2022"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(terra)
+library(sf)
+library(here)
+library(raster)
+library(abind)
+library(stars)
+setwd("C:/Users/cotot/OneDrive/Desktop/LUZ DE NOCHE/1er_Entrega")
+
+here::i_am("1er_Entrega/Union_Mosaicos.Rmd")
+
+
+
+```
+# Proyecto Luz de Noche. Datos LAADS DAAC NASA. Producto: VNP46A4 año 2020
+
+## 1.3 Código en R con el proceso de unión de al menos dos mosaicos que componen a México con cualquiera de los productos NTL
+
+### Carga de los mosaicos.
+
+Aquí aprendí que para poder leer los .shp con sf, deben estar en el mismo directorio también el .shx
+
+```{r load-Mosaicos}
+library(ggplot2)
+BlackMarbleTiles <- sf::read_sf(
+  here::here(
+    "./1er_Entrega", "BlackMarbleTiles.shp"
+  )
+)
+
+plot(BlackMarbleTiles)
+
+```
+
+### Descarga los productos VNP46A4 ya transformados a Geotiff del años 2020 Anuales
+
+
+```{r checkvnp46a4files}
+vnp46a4_files <- fs::dir_ls(
+  path = here::here("1er_Entrega", "Geotiffs"),
+  type = "file",
+  regexp = "VNP46A4",
+)
+```
+
+###Filtración de archivos
+
+Los archivos que se transforman a Geotiff vienen en pares, es decir, (.tiff y .aux xml) entonces tenemos que evitar los archivos .xml
+En epecífico solo tengo  solo 8 archivos tiff cargados en mi directorio (con su respectivo .auxxml), entonces por ahora, solo podemos ir eligiendo de uno en uno.
+ 
+```{r reada4}
+
+clean_a4_files <- as.data.frame(vnp46a4_files) %>% 
+  filter(!stringr::str_detect(vnp46a4_files, ".aux.xml")) %>% pull(vnp46a4_files) #Se quitan los .xml y se extraen los .tiff
+
+#Tambien se puede añadir una función para limpiar por años, pero en este caso solo descargué 2020,
+# por eso no lo necesito...
+
+
+#Read accordingly
+raw_ntl_a4_7 <- terra::rast(
+  clean_a4_files[7] #Estos son los mosaicos(tengo 8 imagenes tiff en mi directorio, entonces solo lee hasta el 8)
+)
+
+
+plot(raw_ntl_a4_7)
+```
+
+### Unión de mosaicos.
+
+Creamos un nuevo objeto y con la función "read_stars", demás funciones de la paquetería "stars".
+
+
+
+```{r}
+
+raster_1<-read_stars(clean_a4_files[1])
+raster_2<-read_stars(clean_a4_files[2])
+raster_3<-read_stars(clean_a4_files[3])
+raster_4<-read_stars(clean_a4_files[4])
+raster_5<-read_stars(clean_a4_files[5])
+raster_6<-read_stars(clean_a4_files[6])
+raster_7<-read_stars(clean_a4_files[7])
+raster_8<-read_stars(clean_a4_files[8])
+
+union_raster<-c(raster_1,raster_2,raster_3,raster_4,along="x") # Aqui hay algo que no entiendo... 
+
+
+
+c1<-st_mosaic(raster_1,raster_2,raster_4,raster_6,raster_5,raster_8,raster_7) #Aqui estoy pegando los rasters pero sin el .shp que pinta la zona ,ademas creo que deben tener un orden en específico ....
+
+plot(c1)
+
+
+
+
+
+```
+De esa manera se pueden unir los mosaicos de la intensidad luminica con la paqueteria Stars, creo que tambien debe de haber una manera distinta con terra:: o raster::
+
+
+## 1.6  Tomar un mosaico NTL de México para cualquier año y agregue los valores de pixeles por estado utilizando el MarcoGeostadistico 2020.
+
+
+```{r}
+marco_estados<-sf::st_read(
+  here::here(
+    "1er_Entrega/Outputs", "00ent.shp"
+  )
+)
+```
+
+
+```{r}
+
+st_crs(marco_estados)
+st_transform(BlackMarbleTiles, crs = st_crs(marco_estados))
+
+
+```
+
+### Carga del BlackMarble completo
+Anteriormente, descargamos los mosaicos ahora lo combinamos con nuestro marco de estados
+```{r fullMarble}
+marcoestados2blackmarble = marco_estados %>% 
+  st_transform(st_crs(BlackMarbleTiles))
+
+
+ggplot() +
+  geom_sf(data= BlackMarbleTiles, aes(color='black')) +
+  geom_sf(data= marcoestados2blackmarble, aes(fill = CVE_ENT)) +
+  theme_void() +
+  theme(legend.position = "none")
+
+```
+#### Realizamos Crop
+Usamos la función Crop para específicar nuestra zona de interés.
+
+```{r crop-rasters}
+
+# check extent
+terra::ext(marcoestados2blackmarble)
+terra::ext(BlackMarbleTiles)
+
+BlackTiles_cropped <- st_crop(BlackMarbleTiles,
+                              st_bbox(marcoestados2blackmarble))
+
+
+ggplot() +
+  geom_sf(data= BlackTiles_cropped, aes(color=TileID)) +
+  geom_sf(data= marcoestados2blackmarble, aes(fill = CVE_ENT)) +
+  theme_void() +
+  theme(legend.position = "none")
+
+```
+
+
+```{r removemaps}
+rm(BlackMarbleTiles, BlackTiles_cropped)
+```
+## ShapeFIle México
+Descargamos los poligonos correspondientes a los estados.
+En todo México para el MarcoGeo 2020 existen un total de 32 estados
+
+```{r}
+edo_2020_file <- terra::vect(
+  here::here("1er_Entrega/Outputs", "00ent.shp")
+)
+
+plot(edo_2020_file)
+
+```
+## Elección del mosaico del producto NTL
+Decidí tomar el mosaico que corresponde al Sureste Mexicano.
+
+```{r}
+raw_ntl_a4_5 <- terra::rast(
+  clean_a4_files[5] #Estos son los mosaicos(tengo 8 imagenes tiff en mi directorio, entonces solo lee hasta el 8)
+)
+
+
+plot(raw_ntl_a4_5)
+```
+#### Especificación.
+
+En este apartado, se realiza la transformación del marco_estados además de la creación de un nuevo shapefile, correspondiente al mosaico elegido.
+
+```{r}
+setwd("C:/Users/cotot/OneDrive/Desktop/LUZ DE NOCHE/1er_Entrega")
+
+zona_a5<-raster("Geotiffs/VNP46A4.2020001.h08v07.AllAngle_Composite_Snow_Free.tif")
+
+sf::st_crs(marco_estados)
+
+
+muns_estat_2020_transformed <- sf::st_transform(
+  marco_estados, 
+  crs(raw_ntl_a4_5)
+  )
+
+ent_shp<-"ent2020.shp"
+
+sf::write_sf(muns_estat_2020_transformed,
+             here::here("1er_Entrega/Outputs",ent_shp),
+             overwrite=TRUE)
+
+
+
+```
+Utilizamos el "CROP" para fijar la sección
+```{r}
+
+estat_geo_2020_terra<-terra::vect(
+  here::here("1er_Entrega/Outputs","ent2020.shp")
+)
+ #Extensiones
+terra::ext(estat_geo_2020_terra)
+terra::ext(raw_ntl_a4_5)
+
+cropped_ntl_a5<-terra::crop(raw_ntl_a4_5,
+                            terra::ext(estat_geo_2020_terra))
+plot(cropped_ntl_a5)
+
+#extensión
+terra::ext(cropped_ntl_a5)
+
+
+```
+
+####Procedimiento distinto.
+En este caso se utiliza 'extract' de `zonal`, pero `extract` nos devuelve la misma longitud de vector que necesitamos para, facilmente, incluirla a un `spatial dataframe`.
+
+```{r}
+
+
+terra::crs(estat_geo_2020_terra) <- "+init=epsg:4269 +proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs +towgs84=0,0,0"
+
+terra::ext(estat_geo_2020_terra)
+terra::ext(raw_ntl_a4_5)
+
+get1_a3_cropped <- terra::crop(raw_ntl_a4_5, 
+                               terra::ext(estat_geo_2020_terra))
+
+#plot(ntl_2015_cropped)
+terra::ext(get1_a3_cropped)
+
+plot(get1_a3_cropped)
+
+
+```
+### Agregación por entidad.
+
+Procederemos a realizar la agregación de pixeles por estado usando la mediana como agregación, para tratar de tomar un valor representativo de intensidad luminica a nivel estatal.
+
+```{r}
+marco_estados<-sf::st_read(
+  here::here(
+    "1er_Entrega/Outputs", "00ent.shp"
+  )
+  
+  
+)
+
+
+
+
+```
+
+Realizamos una función para extraer las estadísticas para cada estado elegido.
+
+```{r func2extractlight}
+library(furrr)
+extract_agg_stats <- function(spatial_df,
+                              agg_unit_reference,
+                              plot_results){
+
+#calcula para cada archivo las estadisticas
+  
+  extract_mean <- terra::extract(spatial_df,
+                                      agg_unit_reference,
+                                      fun = 'mean')
+  
+  extract_min <- terra::extract(spatial_df,
+                                     agg_unit_reference,
+                                     fun = 'min')
+  extract_max <- terra::extract(spatial_df,
+                                     uns_2015_file,
+                                     fun = 'max')
+  extract_median <- terra::extract(spatial_df,
+                                        agg_unit_reference,
+                                        fun = 'median')
+  extract_sum <- terra::extract(spatial_df,
+                                     agg_unit_reference,
+                                     fun = 'sum')
+  
+  # agrupa a un solo valor cada estadistica
+  
+  ntl_dataframe <- agg_unit_reference %>%
+    mutate(
+      median_ntl = apply(extract_median, 1, FUN = 'median'),
+      mean_ntl = apply(extract_mean, 1, FUN = 'median'),
+      max_ntl = apply(extract_max, 1, FUN = 'median'),
+      min_ntl = apply(extract_min, 1, FUN = 'median'),
+      median_sum_ntl = apply(extract_sum, 1, FUN = 'median')
+    )
+  
+  
+  plot(estat_ntl_2020[, "median_sum_ntl"])
+  
+  return(ntl_dataframe)
+}
+```
+Aplicamos los metodos
+
+```{r extract-stats-2015, message=FALSE, warning=FALSE}
+extract_mean_2020 <- terra::extract(cropped_ntl_a5, estat_geo_2020_terra,fun = 'mean')
+extract_min_2020 <- terra::extract(cropped_ntl_a5, estat_geo_2020_terra, fun = 'min')
+extract_max_2020 <- terra::extract(cropped_ntl_a5, estat_geo_2020_terra, fun = 'max')
+extract_median_2020 <- terra::extract(cropped_ntl_a5, estat_geo_2020_terra, fun = 'median')
+extract_sum_2020 <- terra::extract(cropped_ntl_a5, estat_geo_2020_terra, fun = 'sum')
+
+
+```
+
+
+
+```{r aggregation, eval=FALSE}
+# object conversion
+raster_estat <- terra::rasterize(estat_geo_2020_terra, cropped_ntl_a5)
+
+# math
+aggregation_mean_2020 <- terra::zonal(cropped_ntl_a5, raster_estat,fun = "mean", na.rm=TRUE)
+aggregation_min_2020<- terra::zonal(cropped_ntl_a5, raster_estat, fun = "min", na.rm=TRUE)
+aggregation_max_2020 <- terra::zonal(cropped_ntl_a5, raster_estat, fun = "max", na.rm=TRUE)
+aggregation_median_2020 <- terra::zonal(cropped_ntl_a5, raster_estat, fun = "median", na.rm=TRUE)
+```
+
+
+
+
+
+```{r append-stats-2020}
+
+estat_ntl_2020 <- marco_estados %>%
+  mutate(
+    median_ntl = apply(extract_median_2020, 1, FUN = 'median'),
+    mean_ntl = apply(extract_mean_2020, 1, FUN = 'median'),
+    max_ntl = apply(extract_max_2020, 1, FUN = 'median'),
+    min_ntl = apply(extract_min_2020, 1, FUN = 'median'),
+    median_sum_ntl = apply(extract_sum_2020, 1, FUN = 'median')
+  )
+  
+
+plot(estat_ntl_2020[,"median_sum_ntl"])
+
+```
+
+### Plot en 3D
+
+
+
+```{r}
+library(rayshader)
+library(ggplot2)
+library(viridis)
+
+gg_mx2020NTL <- ggplot() + 
+  geom_sf(data = estat_ntl_2020, aes(fill = median_sum_ntl)) +
+  scale_fill_viridis_c(option = "C") +
+  theme_bw() + 
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank())
+
+
+
+```
+
+
+```{r}
+plot_gg(gg_mx2020NTL,scale=300,zoom=0.5,multicore=TRUE,windowsize = c(1000, 800))
+
+Sys.sleep(0.2)
+render_snapshot(clear = TRUE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
