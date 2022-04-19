@@ -10,7 +10,7 @@ En este código se hace la unión, extracción y agregación de los datos Sateli
 | ------------- | ------------- |
 | [![github-2.png](https://i.postimg.cc/158cBbMG/github-2.png)](https://postimg.cc/VdcCLGxv)  | [![github-3.png](https://i.postimg.cc/R0SdzdwG/github-3.png)](https://postimg.cc/hXYTL9y7)  |
 
-## Agregación por entidad federativa
+## Agregación de pixeles por entidad federativa
 En el que se realiza la agregación de pixeles por estado usando la mediana como agregación, para tratar de tomar un valor representativo de intensidad luminica a nivel estatal.
 
 [![3d-mediana.png](https://i.postimg.cc/9Q8RrYvL/3d-mediana.png)](https://postimg.cc/G4DhfG3D)
